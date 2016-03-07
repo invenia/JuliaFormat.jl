@@ -1,5 +1,10 @@
 using JuliaFormat
-using Base.Test
+if VERSION >= v"0.5-"
+    using Base.Test
+else
+    using BaseTestNext
+    const Test = BaseTestNext
+end
 
 @testset "in == out" begin
     same_strs = [

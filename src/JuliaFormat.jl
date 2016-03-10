@@ -1,17 +1,20 @@
 module JuliaFormat
 
-export format
+export format_code
 
-import Base: show_unquoted
+import Base: operator_precedence, uni_ops, isoperator
 
 type FormatError <: Exception
     msg::AbstractString
 end
 
 expr_and_type(x::Expr, expr_type::Symbol) = x.head === expr_type
+
 expr_and_type(x, expr_type::Symbol) = false
 
-function format{T<:AbstractString}(code_string::T)
+isoperator(x::Expr) = false
+
+function format_code{T<:AbstractString}(code_string::T)
     code_array = T[]
     fragment, parse_start_index = parse(code_string, 1)
     while fragment !== nothing
@@ -25,35 +28,115 @@ end
 
 format(code::Expr) = format(code, Val{code.head}())
 
-format(var) = string(var)
+format(linenode::LineNumberNode) = linenode.line > 1 ? "\n" : ""
 
-function format(code::Expr, ::Val{:call})
+format(sym::Symbol) = string(sym)
+
+format(var::Union{Real, Char, ASCIIString, UTF8String}) = repr(var)
+
+## Function Calls
+
+# different call types represent different formatting behaviour cases
+
+abstract CallType
+
+type ScalarMultiply <: CallType
+    parent_precedence::Int
+    precedence::Int
+end
+
+type UnaryCall <: CallType
+    parent_precedence::Int
+    precedence::Int
+end
+
+type InfixCall <: CallType
+    parent_precedence::Int
+    precedence::Int
+end
+
+type FunctionCall <: CallType
+    parent_precedence::Int
+    precedence::Int
+end
+
+function CallType(code::Expr; parent_precedence=0)
+    func = code.args[1]
+    args = code.args[2:end]
+    nargs = length(args)
+
+    if func === :* && nargs == 2 && isa(args[1], Real) && isa(args[2], Symbol)
+        return ScalarMultiply(parent_precedence, operator_precedence(:*))
+    elseif func in uni_ops && nargs == 1
+        return UnaryCall(parent_precedence, operator_precedence(func))
+    elseif isoperator(func) && nargs > 1 && ~any(x->expr_and_type(x, :...), args)
+        return InfixCall(parent_precedence, operator_precedence(func))
+    else
+        return FunctionCall(parent_precedence, 0)
+    end
+end
+
+function format(code::Expr, v::Val{:call}; parent_precedence=0)
+    return format(code, v, CallType(code; parent_precedence=parent_precedence))
+end
+
+function format(code::Expr, ::Val{:call}, ::ScalarMultiply)
+    return "$(format(code.args[2]))$(format(code.args[3]))"
+end
+
+function format(code::Expr, ::Val{:call}, ::UnaryCall)
+    return "$(format(code.args[1]))$(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:call}, callobj::InfixCall)
+    buffer = IOBuffer()
+
+    needs_parens = callobj.precedence < callobj.parent_precedence
+    if needs_parens
+        print(buffer, '(')
+    end
+
+    print_joined(
+        buffer,
+        map(code.args[2:end]) do x
+            if expr_and_type(x, :call)
+                return format(x, Val{:call}(); parent_precedence=callobj.precedence)
+            else
+                return format(x)
+            end
+        end,
+        " $(format(code.args[1])) ",
+    )
+
+    if needs_parens
+        print(buffer, ')')
+    end
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:call}, ::FunctionCall)
     buffer = IOBuffer()
 
     nargs = length(code.args) - 1
-    print(buffer, code.args[1], '(')
+    print(buffer, format(code.args[1]), '(')
     if nargs > 0
+        args = Any[]
         kwargs = Any[]
         semicolon_kwargs = Any[]
-        # todo: make this a map and join
-        for i = 2:nargs
-            if expr_and_type(code.args[i], :parameters)
-                # kwargs after a semicolon
-                semicolon_kwargs = code.args[i].args
-            elseif expr_and_type(code.args[i], :kw)
-                push!(kwargs, code.args[i])
+
+        for arg in code.args[2:end]
+            if expr_and_type(arg, :parameters)
+                # kwargs after a semicolon, only appears once
+                semicolon_kwargs = arg.args
+            elseif expr_and_type(arg, :kw)
+                push!(kwargs, arg)
             else
-                print(buffer, format(code.args[i]))
-                print(buffer, ", ")
+                push!(args, arg)
             end
         end
-        if expr_and_type(code.args[end], :parameters)
-            semicolon_kwargs = code.args[end].args
-        elseif expr_and_type(code.args[end], :kw)
-            push!(kwargs, code.args[end])
-        else
-            print(buffer, format(code.args[end]))
-        end
+
+        print_joined(buffer, map(format, args), ", ")
 
         append!(kwargs, semicolon_kwargs)
         if !isempty(kwargs)
@@ -72,6 +155,253 @@ end
 
 function format(code::Expr, ::Val{:kw})
     return "$(format(code.args[1]))=$(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:(=>)})
+    return "$(format(code.args[1])) => $(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:(:)})
+    return join(map(format, code.args), ":")
+end
+
+
+## Assignment
+
+typealias AssignmentVals Union{
+    Val{:(=)},
+    Val{:*=},
+    Val{:+=},
+    Val{:/=},
+    Val{:-=},
+    Val{:÷=},
+    Val{:\=},
+    Val{:&=},
+    Val{:|=},
+    Val{:^=},
+    Val{:$=},
+    Val{:%=},
+    Val{://=},
+    Val{:<<=},
+    Val{:>>=},
+    Val{:>>>=},
+    Val{:(:=)},
+    Val{:.*=},
+    Val{:.+=},
+    Val{:./=},
+    Val{:.-=},
+    Val{:.÷=},
+    Val{:.\=},
+    Val{:.^=},
+    Val{:.%=}
+}
+
+function format(code::Expr, ::AssignmentVals)
+    buffer = IOBuffer()
+
+    if expr_and_type(code.args[1], :tuple)
+        print_joined(buffer, map(format, code.args[1].args), ", ")
+    else
+        print(buffer, format(code.args[1]))
+    end
+
+    print(buffer, ' ', code.head, ' ')
+    print(buffer, format(code.args[2]))
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Union{Val{:local}, Val{:global}, Val{:const}})
+    return "$(code.head) $(format(code.args[1]))"
+end
+
+## Tuples
+
+function format(code::Expr, ::Val{:tuple})
+    buffer = IOBuffer()
+
+    print(buffer, '(')
+    print_joined(buffer, map(format, code.args), ", ")
+    print(buffer, ')')
+
+    return takebuf_string(buffer)
+end
+
+## Importing
+
+function format(code::Expr, ::Val{:using})
+    return "using $(format(code.args[1]))"
+end
+
+function format(code::Expr, ::Val{:import})
+    if length(code.args) == 1
+        return "import $(format(code.args[1]))"
+    else
+        return "import $(format(code.args[1])): $(format(code.args[2]))"
+    end
+end
+
+## Types
+
+function format(code::Expr, ::Val{:(::)})
+    return "$(format(code.args[1]))::$(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:curly})
+    buffer = IOBuffer()
+
+    print(buffer, format(code.args[1]))
+    print(buffer, '{')
+    print_joined(buffer, map(format, code.args[2:end]), ", ")
+    print(buffer, '}')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:<:})  # note: only subtyping, not comparison
+    return "$(format(code.args[1])) <: $(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:abstract})
+    return "abstract $(format(code.args[1]))"
+end
+
+function format(code::Expr, ::Val{:typealias})
+    return "typealias $(format(code.args[1])) $(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:.})
+    buffer = IOBuffer()
+
+    print(buffer, format(code.args[1]), '.')
+
+    if isa(code.args[2], QuoteNode)
+        print(buffer, format(code.args[2].value))
+    else
+        print(buffer, '(', format(code.args[2]), ')')
+    end
+
+    return takebuf_string(buffer)
+end
+
+## Comparison
+
+function format(code::Expr, ::Val{:comparison})
+    return "$(format(code.args[1])) $(format(code.args[2])) $(format(code.args[3]))"
+end
+
+function format(code::Expr, ::Val{:&&})
+    return "$(format(code.args[1])) && $(format(code.args[2]))"
+end
+
+function format(code::Expr, ::Val{:||})
+    return "$(format(code.args[1])) || $(format(code.args[2]))"
+end
+
+## Metaprogramming
+
+function format(code::Expr, ::Val{:$})
+    arg = code.args[1]
+
+    if isa(arg, Symbol)
+        return "\$$arg"
+    else
+        return "\$($(format(arg)))"
+    end
+end
+
+## Arrays and Indexing
+
+function format(code::Expr, ::Val{:vect})
+    buffer = IOBuffer()
+
+    print(buffer, '[')
+    print_joined(buffer, map(format, code.args), ", ")
+    print(buffer, ']')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:cell1d})
+    buffer = IOBuffer()
+
+    print(buffer, '{')
+    print_joined(buffer, map(format, code.args), ", ")
+    print(buffer, '}')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:cell2d})
+    buffer = IOBuffer()
+
+    rows, cols = code.args[1:2]
+
+    print(buffer, '{')
+    for i = 1:(rows - 1)
+        for j = 1:(cols - 1)
+            print(buffer, format(code.args[(j - 1) * rows + i + 2]), ' ')
+        end
+        print(buffer, format(code.args[(cols - 1) * rows + i + 2]), "; ")
+    end
+    for j = 1:(cols - 1)
+        print(buffer, format(code.args[j * rows + 2]), ' ')
+    end
+    print(buffer, format(code.args[cols * rows + 2]))
+    print(buffer, '}')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:hcat})
+    buffer = IOBuffer()
+
+    print(buffer, '[')
+    print_joined(buffer, map(format, code.args), ' ')
+    print(buffer, ']')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:row})
+    return join(map(format, code.args), ' ')
+end
+
+function format(code::Expr, ::Val{:vcat})
+    buffer = IOBuffer()
+
+    print(buffer, '[')
+    print_joined(buffer, map(format, code.args), "; ")
+    print(buffer, ']')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:typed_vcat})
+    buffer = IOBuffer()
+
+    print(buffer, format(code.args[1]))
+    print(buffer, '[')
+    print_joined(buffer, map(format, code.args[2:end]), "; ")
+    print(buffer, ']')
+
+    return takebuf_string(buffer)
+end
+
+function format(code::Expr, ::Val{:ref})
+    buffer = IOBuffer()
+
+    if expr_and_type(code.args[1], :call) && !(isa(CallType(code.args[1]), FunctionCall))
+        print(buffer, '(', format(code.args[1]), ')')
+    else
+        print(buffer, format(code.args[1]))
+    end
+
+    print(buffer, '[')
+    print_joined(buffer, map(format, code.args[2:end]), ", ")
+    print(buffer, ']')
+
+    return takebuf_string(buffer)
 end
 
 end # module

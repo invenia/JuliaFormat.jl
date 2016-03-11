@@ -26,13 +26,18 @@ function format_code{T<:AbstractString}(code_string::T)
     return join(code_array, "\n")
 end
 
-format(code::Expr) = format(code, Val{code.head}())
+function format(code::Expr; parent_precedence=0)
+    return format(code, Val{code.head}(); parent_precedence=parent_precedence)
+end
 
 format(linenode::LineNumberNode) = linenode.line > 1 ? "\n" : ""
 
 format(sym::Symbol) = string(sym)
 
 format(var::Union{Real, Char, ASCIIString, UTF8String}) = repr(var)
+
+# a fallback for methods which don't take kwargs
+format(args...; kwargs...) = format(args...)
 
 ## Function Calls
 
@@ -99,11 +104,7 @@ function format(code::Expr, ::Val{:call}, callobj::InfixCall)
     print_joined(
         buffer,
         map(code.args[2:end]) do x
-            if expr_and_type(x, :call)
-                return format(x, Val{:call}(); parent_precedence=callobj.precedence)
-            else
-                return format(x)
-            end
+            return format(x; parent_precedence=callobj.precedence)
         end,
         " $(format(code.args[1])) ",
     )
@@ -154,11 +155,27 @@ function format(code::Expr, ::Val{:...})
 end
 
 function format(code::Expr, ::Val{:kw})
-    return "$(format(code.args[1]))=$(format(code.args[2]))"
+    buffer = IOBuffer()
+    op = :(=)
+    prec = operator_precedence(op)
+
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, op)
+    print(buffer, format(code.args[2]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
 function format(code::Expr, ::Val{:(=>)})
-    return "$(format(code.args[1])) => $(format(code.args[2]))"
+    buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
+
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, ' ', op, ' ')
+    print(buffer, format(code.args[2]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
 function format(code::Expr, ::Val{:(:)})
@@ -198,15 +215,17 @@ typealias AssignmentVals Union{
 
 function format(code::Expr, ::AssignmentVals)
     buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
 
     if expr_and_type(code.args[1], :tuple)
         print_joined(buffer, map(format, code.args[1].args), ", ")
     else
-        print(buffer, format(code.args[1]))
+        print(buffer, format(code.args[1]; parent_precedence=prec))
     end
 
     print(buffer, ' ', code.head, ' ')
-    print(buffer, format(code.args[2]))
+    print(buffer, format(code.args[2]; parent_precedence=prec))
 
     return takebuf_string(buffer)
 end
@@ -244,7 +263,15 @@ end
 ## Types
 
 function format(code::Expr, ::Val{:(::)})
-    return "$(format(code.args[1]))::$(format(code.args[2]))"
+    buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
+
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, op)
+    print(buffer, format(code.args[2]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
 function format(code::Expr, ::Val{:curly})
@@ -259,7 +286,15 @@ function format(code::Expr, ::Val{:curly})
 end
 
 function format(code::Expr, ::Val{:<:})  # note: only subtyping, not comparison
-    return "$(format(code.args[1])) <: $(format(code.args[2]))"
+    buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
+
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, ' ', op, ' ')
+    print(buffer, format(code.args[2]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
 function format(code::Expr, ::Val{:abstract})
@@ -272,11 +307,13 @@ end
 
 function format(code::Expr, ::Val{:.})
     buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
 
-    print(buffer, format(code.args[1]), '.')
+    print(buffer, format(code.args[1]; parent_precedence=prec), '.')
 
     if isa(code.args[2], QuoteNode)
-        print(buffer, format(code.args[2].value))
+        print(buffer, format(code.args[2].value; parent_precedence=prec))
     else
         print(buffer, '(', format(code.args[2]), ')')
     end
@@ -287,15 +324,27 @@ end
 ## Comparison
 
 function format(code::Expr, ::Val{:comparison})
-    return "$(format(code.args[1])) $(format(code.args[2])) $(format(code.args[3]))"
+    buffer = IOBuffer()
+    op = code.args[2]
+    prec = operator_precedence(op)
+
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, ' ', op, ' ')
+    print(buffer, format(code.args[3]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
-function format(code::Expr, ::Val{:&&})
-    return "$(format(code.args[1])) && $(format(code.args[2]))"
-end
+function format(code::Expr, ::Union{Val{:&&},Val{:||}})
+    buffer = IOBuffer()
+    op = code.head
+    prec = operator_precedence(op)
 
-function format(code::Expr, ::Val{:||})
-    return "$(format(code.args[1])) || $(format(code.args[2]))"
+    print(buffer, format(code.args[1]; parent_precedence=prec))
+    print(buffer, ' ', op, ' ')
+    print(buffer, format(code.args[2]; parent_precedence=prec))
+
+    return takebuf_string(buffer)
 end
 
 ## Metaprogramming

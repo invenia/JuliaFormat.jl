@@ -101,7 +101,7 @@ function format(code::Expr, ::Val{:call}, callobj::InfixCall)
         print(buffer, '(')
     end
 
-    print_joined(
+    join(
         buffer,
         map(code.args[2:end]) do x
             return format(x; parent_precedence=callobj.precedence)
@@ -137,12 +137,12 @@ function format(code::Expr, ::Val{:call}, ::FunctionCall)
             end
         end
 
-        print_joined(buffer, map(format, args), ", ")
+        join(buffer, map(format, args), ", ")
 
         append!(kwargs, semicolon_kwargs)
         if !isempty(kwargs)
             print(buffer, "; ")
-            print_joined(buffer, map(format, kwargs), ", ")
+            join(buffer, map(format, kwargs), ", ")
         end
     end
     print(buffer, ')')
@@ -219,7 +219,7 @@ function format(code::Expr, ::AssignmentVals)
     prec = operator_precedence(op)
 
     if expr_and_type(code.args[1], :tuple)
-        print_joined(buffer, map(format, code.args[1].args), ", ")
+        join(buffer, map(format, code.args[1].args), ", ")
     else
         print(buffer, format(code.args[1]; parent_precedence=prec))
     end
@@ -240,7 +240,7 @@ function format(code::Expr, ::Val{:tuple})
     buffer = IOBuffer()
 
     print(buffer, '(')
-    print_joined(buffer, map(format, code.args), ", ")
+    join(buffer, map(format, code.args), ", ")
     print(buffer, ')')
 
     return takebuf_string(buffer)
@@ -279,7 +279,7 @@ function format(code::Expr, ::Val{:curly})
 
     print(buffer, format(code.args[1]))
     print(buffer, '{')
-    print_joined(buffer, map(format, code.args[2:end]), ", ")
+    join(buffer, map(format, code.args[2:end]), ", ")
     print(buffer, '}')
 
     return takebuf_string(buffer)
@@ -365,7 +365,7 @@ function format(code::Expr, ::Val{:vect})
     buffer = IOBuffer()
 
     print(buffer, '[')
-    print_joined(buffer, map(format, code.args), ", ")
+    join(buffer, map(format, code.args), ", ")
     print(buffer, ']')
 
     return takebuf_string(buffer)
@@ -375,7 +375,7 @@ function format(code::Expr, ::Val{:cell1d})
     buffer = IOBuffer()
 
     print(buffer, '{')
-    print_joined(buffer, map(format, code.args), ", ")
+    join(buffer, map(format, code.args), ", ")
     print(buffer, '}')
 
     return takebuf_string(buffer)
@@ -406,7 +406,7 @@ function format(code::Expr, ::Val{:hcat})
     buffer = IOBuffer()
 
     print(buffer, '[')
-    print_joined(buffer, map(format, code.args), ' ')
+    join(buffer, map(format, code.args), ' ')
     print(buffer, ']')
 
     return takebuf_string(buffer)
@@ -420,7 +420,7 @@ function format(code::Expr, ::Val{:vcat})
     buffer = IOBuffer()
 
     print(buffer, '[')
-    print_joined(buffer, map(format, code.args), "; ")
+    join(buffer, map(format, code.args), "; ")
     print(buffer, ']')
 
     return takebuf_string(buffer)
@@ -431,7 +431,7 @@ function format(code::Expr, ::Val{:typed_vcat})
 
     print(buffer, format(code.args[1]))
     print(buffer, '[')
-    print_joined(buffer, map(format, code.args[2:end]), "; ")
+    join(buffer, map(format, code.args[2:end]), "; ")
     print(buffer, ']')
 
     return takebuf_string(buffer)
@@ -447,7 +447,7 @@ function format(code::Expr, ::Val{:ref})
     end
 
     print(buffer, '[')
-    print_joined(buffer, map(format, code.args[2:end]), ", ")
+    join(buffer, map(format, code.args[2:end]), ", ")
     print(buffer, ']')
 
     return takebuf_string(buffer)

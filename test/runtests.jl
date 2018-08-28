@@ -1,6 +1,6 @@
 using JuliaFormat
-if VERSION >= v"0.5-"
-    using Base.Test
+if VERSION >= v"0.7-"
+    using Test
 else
     using BaseTestNext
     const Test = BaseTestNext

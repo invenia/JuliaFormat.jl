@@ -4,7 +4,7 @@ export format_code
 
 import Base: operator_precedence, uni_ops, isoperator
 
-type FormatError <: Exception
+struct FormatError <: Exception
     msg::AbstractString
 end
 
@@ -14,7 +14,7 @@ expr_and_type(x, expr_type::Symbol) = false
 
 isoperator(x::Expr) = false
 
-function format_code{T<:AbstractString}(code_string::T)
+function format_code(code_string::T) where T <: AbstractString
     code_array = T[]
     fragment, parse_start_index = parse(code_string, 1)
     while fragment !== nothing
@@ -34,7 +34,7 @@ format(linenode::LineNumberNode) = linenode.line > 1 ? "\n" : ""
 
 format(sym::Symbol) = string(sym)
 
-format(var::Union{Real, Char, ASCIIString, UTF8String}) = repr(var)
+format(var::Union{Real, Char, String}) = repr(var)
 
 # a fallback for methods which don't take kwargs
 format(args...; kwargs...) = format(args...)
@@ -43,24 +43,24 @@ format(args...; kwargs...) = format(args...)
 
 # different call types represent different formatting behaviour cases
 
-abstract CallType
+abstract type CallType end
 
-type ScalarMultiply <: CallType
+struct ScalarMultiply <: CallType
     parent_precedence::Int
     precedence::Int
 end
 
-type UnaryCall <: CallType
+struct UnaryCall <: CallType
     parent_precedence::Int
     precedence::Int
 end
 
-type InfixCall <: CallType
+struct InfixCall <: CallType
     parent_precedence::Int
     precedence::Int
 end
 
-type FunctionCall <: CallType
+struct FunctionCall <: CallType
     parent_precedence::Int
     precedence::Int
 end
@@ -185,7 +185,7 @@ end
 
 ## Assignment
 
-typealias AssignmentVals Union{
+const AssignmentVals = Union{
     Val{:(=)},
     Val{:*=},
     Val{:+=},

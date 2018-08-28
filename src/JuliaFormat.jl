@@ -16,11 +16,11 @@ isoperator(x::Expr) = false
 
 function format_code(code_string::T) where T <: AbstractString
     code_array = T[]
-    fragment, parse_start_index = parse(code_string, 1)
+    fragment, parse_start_index = Meta.parse(code_string, 1)
     while fragment !== nothing
         push!(code_array, format(fragment))
 
-        fragment, parse_start_index = parse(code_string, parse_start_index)
+        fragment, parse_start_index = Meta.parse(code_string, parse_start_index)
     end
 
     return join(code_array, "\n")

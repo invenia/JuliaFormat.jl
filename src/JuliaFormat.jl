@@ -113,7 +113,7 @@ function format(code::Expr, ::Val{:call}, callobj::InfixCall)
         print(buffer, ')')
     end
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:call}, ::FunctionCall)
@@ -147,7 +147,7 @@ function format(code::Expr, ::Val{:call}, ::FunctionCall)
     end
     print(buffer, ')')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:...})
@@ -163,7 +163,7 @@ function format(code::Expr, ::Val{:kw})
     print(buffer, op)
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:(=>)})
@@ -175,7 +175,7 @@ function format(code::Expr, ::Val{:(=>)})
     print(buffer, ' ', op, ' ')
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:(:)})
@@ -227,7 +227,7 @@ function format(code::Expr, ::AssignmentVals)
     print(buffer, ' ', code.head, ' ')
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Union{Val{:local}, Val{:global}, Val{:const}})
@@ -243,7 +243,7 @@ function format(code::Expr, ::Val{:tuple})
     join(buffer, map(format, code.args), ", ")
     print(buffer, ')')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 ## Importing
@@ -271,7 +271,7 @@ function format(code::Expr, ::Val{:(::)})
     print(buffer, op)
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:curly})
@@ -282,7 +282,7 @@ function format(code::Expr, ::Val{:curly})
     join(buffer, map(format, code.args[2:end]), ", ")
     print(buffer, '}')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:<:})  # note: only subtyping, not comparison
@@ -294,7 +294,7 @@ function format(code::Expr, ::Val{:<:})  # note: only subtyping, not comparison
     print(buffer, ' ', op, ' ')
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:abstract})
@@ -318,7 +318,7 @@ function format(code::Expr, ::Val{:.})
         print(buffer, '(', format(code.args[2]), ')')
     end
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 ## Comparison
@@ -332,7 +332,7 @@ function format(code::Expr, ::Val{:comparison})
     print(buffer, ' ', op, ' ')
     print(buffer, format(code.args[3]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Union{Val{:&&},Val{:||}})
@@ -344,7 +344,7 @@ function format(code::Expr, ::Union{Val{:&&},Val{:||}})
     print(buffer, ' ', op, ' ')
     print(buffer, format(code.args[2]; parent_precedence=prec))
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 ## Metaprogramming
@@ -368,7 +368,7 @@ function format(code::Expr, ::Val{:vect})
     join(buffer, map(format, code.args), ", ")
     print(buffer, ']')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:cell1d})
@@ -378,7 +378,7 @@ function format(code::Expr, ::Val{:cell1d})
     join(buffer, map(format, code.args), ", ")
     print(buffer, '}')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:cell2d})
@@ -399,7 +399,7 @@ function format(code::Expr, ::Val{:cell2d})
     print(buffer, format(code.args[cols * rows + 2]))
     print(buffer, '}')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:hcat})
@@ -409,7 +409,7 @@ function format(code::Expr, ::Val{:hcat})
     join(buffer, map(format, code.args), ' ')
     print(buffer, ']')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:row})
@@ -423,7 +423,7 @@ function format(code::Expr, ::Val{:vcat})
     join(buffer, map(format, code.args), "; ")
     print(buffer, ']')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:typed_vcat})
@@ -434,7 +434,7 @@ function format(code::Expr, ::Val{:typed_vcat})
     join(buffer, map(format, code.args[2:end]), "; ")
     print(buffer, ']')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 function format(code::Expr, ::Val{:ref})
@@ -450,7 +450,7 @@ function format(code::Expr, ::Val{:ref})
     join(buffer, map(format, code.args[2:end]), ", ")
     print(buffer, ']')
 
-    return takebuf_string(buffer)
+    return String(take!(buffer))
 end
 
 end # module
